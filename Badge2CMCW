@@ -1,0 +1,102 @@
+alter database "SHARED_SAMPLE_DATA"
+rename to snowflake_sample_data;
+
+--Check the range of values in the Market Segment Column
+select distinct c_mktsegment
+from snowflake_sample_data.tpch_sf1.customer;
+
+--Find out which Market Segments have the most customers
+select c_mktsegment, count(*)
+from snowflake_sample_data.tpch_sf1.customer
+group by c_mktsegment
+order by count(*);
+
+
+-- Nations Table
+select n_nationkey, n_name, n_regionkey
+from snowflake_sample_data.tpch_sf1.nation;
+
+
+-- Regions Table
+select r_regionkey, r_name
+from snowflake_sample_data.tpch_sf1.region;
+
+
+-- Join the Tables and Sort
+select r_name as region, n_name as nation
+from snowflake_sample_data.tpch_sf1.nation
+join snowflake_sample_data.tpch_sf1.region
+on n_regionkey = r_regionkey
+order by r_name, n_name asc;
+
+--Group and Count Rows Per Region
+select r_name as region, count(n_name) as num_countries
+from snowflake_sample_data.tpch_sf1.nation
+join snowflake_sample_data.tpch_sf1.region
+on n_regionkey = r_regionkey
+group by r_name;
+
+select r_name as region, 
+    count(n_name) as num_countries
+from snowflake_sample_data.tpch_sf1.nation
+join snowflake_sample_data.tpch_sf1.region
+on n_regionkey = r_regionkey
+group by r_name;
+
+
+use role SYSADMIN;
+
+create database INTL_DB;
+
+use schema INTL_DB.PUBLIC;
+
+use role SYSADMIN;
+
+create warehouse INTL_WH 
+with 
+warehouse_size = 'XSMALL' 
+warehouse_type = 'STANDARD' 
+auto_suspend = 600 --600 seconds/10 mins
+auto_resume = TRUE;
+
+use warehouse INTL_WH;
+
+create or replace table intl_db.public.INT_STDS_ORG_3166 
+(iso_country_name varchar(100), 
+ country_name_official varchar(200), 
+ sovreignty varchar(40), 
+ alpha_code_2digit varchar(2), 
+ alpha_code_3digit varchar(3), 
+ numeric_country_code integer,
+ iso_subdivision varchar(15), 
+ internet_domain_code varchar(10)
+);
+
+create or replace file format util_db.public.PIPE_DBLQUOTE_HEADER_CR 
+  type = 'CSV' --use CSV for any flat file
+  compression = 'AUTO' 
+  field_delimiter = '|' --pipe or vertical bar
+  record_delimiter = '\r' --carriage return
+  skip_header = 1  --1 header row
+  field_optionally_enclosed_by = '\042'  --double quotes
+  trim_space = FALSE;
+
+// loading the ISO table using my file format
+// Method 1: Create a new stage using the code below while in the SYSADMIN role
+create or replace stage util_db.public.aws_s3_bucket url = 's3://uni-cmcw';
+
+//Method 2: find account and list in the stages
+show stages in account; 
+
+list @util_db.public.aws_s3_bucket;
+
+//Method 3: copy data into
+copy into INT_STDS_ORG_3166
+from @util_db.public.aws_s3_bucket
+files = ( 'ISO_Countries_UTF8_pipe.csv')
+file_format = ( format_name='util_db.public.PIPE_DBLQUOTE_HEADER_CR' );
+
+//Method 4 check data loaded properly
+select count(*) as found, '249' as expected 
+from INTL_DB.PUBLIC.INT_STDS_ORG_3166;
+
